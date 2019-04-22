@@ -1,22 +1,22 @@
 package webmagicdemo;
 
-import java.util.List;
 
-import dao.impl.AnjukeDaoImpl;
-import entity.AnjukeMainInformation;
-import entity.AnjukePhoto;
+import dao.impl.MainInformationDaoImpl;
+import entity.MainInformation;
 import us.codecraft.webmagic.Page;
 import us.codecraft.webmagic.Site;
 import us.codecraft.webmagic.Spider;
 import us.codecraft.webmagic.processor.PageProcessor;
+import util.PingYinUtil;
+import util.SourceCode;
 
 public class AnjukePageProcessor implements PageProcessor {
 
-	private static int size = 0;// 共抓取到的信息数量
-	private static String location = "hf";
+	private static String[] city = new String[] { "合肥", "北京", "上海", "广州", "深圳", "成都", "南京", "天津", "杭州", "武汉" };
 
 	// 抓取网站的相关配置，包括：编码、抓取间隔、重试次数等
-	private Site site = Site.me().setRetryTimes(3).setSleepTime(1000);
+	private Site site = Site.me().setRetryTimes(3).setSleepTime(1000).setUserAgent(
+			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_7_2) AppleWebKit/537.31 (KHTML, like Gecko) Chrome/26.0.1410.65 Safari/537.31");
 
 	@Override
 	public Site getSite() {
@@ -26,129 +26,79 @@ public class AnjukePageProcessor implements PageProcessor {
 	@Override
 	public void process(Page page) {
 
-		if (!page.getUrl().regex("https://" + location + "\\.zu\\.anjuke\\.com/fangyuan/[0-9]{10}.*").match()) {
-			
+		boolean flag = false;
+		for (int i = 0; i < city.length; i++) {
+			if (page.getUrl().regex(
+					"https://" + PingYinUtil.getFirstSpell(city[i]) + "\\.zu\\.anjuke\\.com/fangyuan/[0-9]{10}.*")
+					.match()) {
+				flag = true;
+				break;
+			}
+		}
+
+		if (!flag) {
 			// 添加所有文章页
 			page.addTargetRequests(page.getHtml().xpath("//div[@class='list-content']").links().all());// 限定文章列表获取区域
-			
 		} else {
-			
-			size++;// 数量加1
-
 			// 存抓取到的数据，方便存入数据库
-			AnjukeMainInformation amf = new AnjukeMainInformation();
-			AnjukePhoto ap = new AnjukePhoto();
+			MainInformation mf = new MainInformation();
+			String[] strings = SourceCode.getHtmlResourceByUrlAnjuke(page.getUrl().toString());
+			if (strings[0] != null && strings[1] != null) {
 
-			// 设置编号
-			amf.setNumber(getLongNumber(page.getHtml().xpath("//*[@id=\"houseCode\"]/text()").get()));
-			// 设置名称
-			amf.setName(page.getHtml().xpath("/html/body/div[3]/h3/text()").get());
-			// 设置地址信息
-			String add1 = page.getHtml().xpath("/html/body/div[3]/div[2]/div[1]/ul[1]/li[8]/a[2]/text()").get();
-			String add2 = page.getHtml().xpath("/html/body/div[3]/div[2]/div[1]/ul[1]/li[8]/a[3]/text()").get();
-			String add3 = page.getHtml().xpath("/html/body/div[3]/div[2]/div[1]/ul[1]/li[8]/a[1]/text()").get();
-			amf.setAddress(add1 + add2 + add3);
-			// 设置面积
-			amf.setArea(Double.valueOf(page.getHtml().xpath("/html/body/div[3]/div[1]/span[3]/em/text()").get()));
-			// 设置房型
-			amf.setHouseType(page.getHtml().xpath("/html/body/div[3]/div[2]/div[1]/ul[1]/li[2]/span[2]/text()").get());
-			// 设置价格
-			amf.setPrice(Double.valueOf(page.getHtml().xpath("/html/body/div[3]/div[1]/span[1]/em/text()").get()));
-			// 设置付款方式
-			amf.setPaymentMethod(
-					page.getHtml().xpath("/html/body/div[3]/div[2]/div[1]/ul[1]/li[1]/span[2]/text()").get());
-			// 设置出租方式
-			amf.setRentWay(page.getHtml().xpath("/html/body/div[3]/div[1]/ul/li[1]/text()").get());
-			// 设置联系人
-			String contact1 = page.getHtml().xpath("/html/body/div[3]/div[2]/div[2]/div[1]/div[1]/h2/text()").get();
-			String contact2 = page.getHtml().xpath("/html/body/div[3]/div[2]/div[2]/div[1]/div[2]/span/text()").get();
-			amf.setContacts(contact1 + contact2);
-			// 设置发布时间
-			amf.setReleaseTime(
-					getDateTime(page.getHtml().xpath("/html/body/div[3]/div[2]/div[1]/div[2]/div/text()").get()));
-			// 设置描述
-			amf.setDescription(page.getHtml().xpath("/html/body/div[3]/div[2]/div[1]/div[6]/allText()").get());
-			// 把对象存入数据库
-			new AnjukeDaoImpl().addMainInformation(amf);
+				
+				mf.setSite("安居客");
+				
+				// 设置名称
+				mf.setName(page.getHtml().xpath("/html/body/div[3]/h3/text()").get());
+				// 设置城市
+				mf.setCity(getTureCity(page.getHtml().xpath("/html/body/div[2]/a[1]/text()").get()));
 
-			// 设置编号
-			ap.setNumber(getLongNumber(page.getHtml().xpath("//*[@id=\"houseCode\"]/text()").get()));
-			// 设置室内图
-			ap.setIndoorPhoto(listToString(page.getHtml().xpath("//*[@id=\"room_pic_wrap\"]/div/img/@src").all()));
-			// 设置户型图
-			ap.setFloorPhoto(listToString(page.getHtml().xpath("//*[@id=\"hx_pic_wrap\"]/div/img/@src").all()));
-			// 设置环境图
-			ap.setEnvironmentPhoto(listToString(page.getHtml().xpath("//*[@id=\"surround_pic_wrap\"]/div/img/@src").all()));
-			// 把对象存入数据库
-			new AnjukeDaoImpl().addPhotoInformation(ap);
-			
+				// 设置面积
+				double area = Double.valueOf(page.getHtml().xpath("/html/body/div[3]/div[1]/span[3]/em/text()").get());
+				mf.setArea(area);
+				// 设置房型
+				String houseType = page.getHtml().xpath("/html/body/div[3]/div[2]/div[1]/ul[1]/li[2]/span[2]/text()")
+						.get();
+				mf.setHouseType(houseType);
+				// 设置价格
+				double price = Double.valueOf(page.getHtml().xpath("/html/body/div[3]/div[1]/span[1]/em/text()").get());
+				mf.setPrice(price);
+				// 设置付款方式
+				String payment = page.getHtml().xpath("/html/body/div[3]/div[2]/div[1]/ul[1]/li[1]/span[2]/text()")
+						.get();
+				mf.setPaymentMethod(payment);
+				// 设置出租方式
+				String rentWay = page.getHtml().xpath("/html/body/div[3]/div[1]/ul/li[1]/text()").get();
+				mf.setRentWay(rentWay);
+				// 设置url地址
+				mf.setUrl(page.getUrl().toString());
+				// 设置坐标
+				mf.setRow_col(strings[1] + "_" + strings[0]);
+				// 设置地址信息
+				String add1 = page.getHtml().xpath("/html/body/div[3]/div[2]/div[1]/ul[1]/li[8]/a[2]/text()").get();
+				String add3 = page.getHtml().xpath("/html/body/div[3]/div[2]/div[1]/ul[1]/li[8]/a[1]/text()").get();
+				String address = add1 + "区" + add3;
+				mf.setAddress(address);
+				// 把对象存入数据库
+				new MainInformationDaoImpl().addMainInformation(mf);
+
+			}
 		}
 	}
 
-	// 把list转换为string，用,分割
-	private String listToString(List<String> stringList) {
-
-		if (stringList == null) {
-			return null;
-		}
-		StringBuilder result = new StringBuilder();
-		boolean flag = false;
-		for (String string : stringList) {
-			if (flag) {
-				result.append(",");
-			} else {
-				flag = true;
-			}
-			result.append(string);
-		}
-		return result.toString();
-	}
-
-	private String getDateTime(String string) {
-		int i = 0;
-		int a = 0, b = 0;
-		for (; i < string.length(); i++) {
-			if (string.charAt(i) >= '0' && string.charAt(i) <= '9') {
-				a = i;
-				break;
-			}
-		}
-		return string.substring(a);
-	}
-
-	/**
-	 * 获取房屋编号里的数字编号
-	 * 
-	 * @param string
-	 * @return
-	 */
-	private long getLongNumber(String string) {
-		char[] c = string.toCharArray();
-		int i = 0;
-		int a = 0, b = 0;
-		for (; i < c.length; i++) {
-			if (c[i] >= '0' && c[i] <= '9') {
-				a = i;
-				break;
-			}
-		}
-		for (; i < c.length; i++) {
-			if (c[i] < '0' || c[i] > '9') {
-				b = i;
-				break;
-			}
-		}
-		return Long.valueOf(string.substring(a, b));
+	private String getTureCity(String string) {
+		int index = string.indexOf("安");
+		return string.substring(0, index);
 	}
 
 	public static void main(String[] args) {
-		long startTime, endTime;
 		System.out.println("【爬虫开始】请耐心等待一大波数据到你碗里来...");
-		startTime = System.currentTimeMillis();
 		// 从用户博客首页开始抓，开启5个线程，启动爬虫
-		Spider.create(new AnjukePageProcessor()).addUrl("https://" + location + ".zu.anjuke.com/").thread(5).run();
-		endTime = System.currentTimeMillis();
-		System.out.println("【爬虫结束】共抓取" + size + "篇文章，耗时约" + ((endTime - startTime) / 1000) + "秒，已保存到数据库，请查收！");
+		Spider spider = Spider.create(new AnjukePageProcessor());
+		for (int i = 0; i < city.length; i++) {
+			spider.addUrl("https://" + PingYinUtil.getFirstSpell(city[i]) + ".zu.anjuke.com/");
+		}
+		spider.thread(5).run();
 	}
 
 }
